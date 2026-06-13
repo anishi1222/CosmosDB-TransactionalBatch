@@ -71,7 +71,7 @@ public class Customer {
 
     public Customer createData() {
 
-        Faker faker = new Faker(new Locale("ja_JP"));
+        Faker faker = new Faker(Locale.of("ja", "JP"));
         Customer sampleCustomer = new Customer();
         sampleCustomer.setCity(faker.country().capital());
         sampleCustomer.setUserDefinedId(faker.random().nextInt(0, 1000));
