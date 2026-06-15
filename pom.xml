@@ -13,8 +13,9 @@
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <java.version>25</java.version>
-        <azure.cosmos.version>4.8.0</azure.cosmos.version>
-        <javafaker.version>1.0.2</javafaker.version>
+        <azure.cosmos.version>4.81.0</azure.cosmos.version>
+        <datafaker.version>2.5.4</datafaker.version>
+        <netty.version>4.1.133.Final</netty.version>
         <slf4j.version>2.0.18</slf4j.version>
         <junit.jupiter.version>6.1.0</junit.jupiter.version>
         <maven.assembly.plugin.version>3.8.0</maven.assembly.plugin.version>
@@ -29,6 +30,18 @@
         <maven.project.info.reports.plugin.version>3.9.0</maven.project.info.reports.plugin.version>    
     </properties>
 
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>io.netty</groupId>
+                <artifactId>netty-bom</artifactId>
+                <version>${netty.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
     <dependencies>
         <dependency>
             <groupId>org.junit.jupiter</groupId>
@@ -42,9 +55,9 @@
             <version>${azure.cosmos.version}</version>
         </dependency>
         <dependency>
-            <groupId>com.github.javafaker</groupId>
-            <artifactId>javafaker</artifactId>
-            <version>${javafaker.version}</version>
+            <groupId>net.datafaker</groupId>
+            <artifactId>datafaker</artifactId>
+            <version>${datafaker.version}</version>
         </dependency>
         <dependency>
             <groupId>org.slf4j</groupId>

@@ -43,7 +43,7 @@ public class TxBatch {
                             logger.info(">>[Create] databaseUsage " + response .getDatabaseUsage() + "[RU]");
                         })
                         .flatMap(response  -> Mono.just(client.getDatabase(response .getProperties().getId())))
-                        .publishOn(Schedulers.elastic())
+                        .publishOn(Schedulers.boundedElastic())
                         .block();
 
                 CosmosContainerProperties containerProperties
@@ -57,12 +57,12 @@ public class TxBatch {
                             logger.info(">>[Create] requestCharge " + response.getRequestCharge() + "[RU]");
                         })
                         .flatMap(response -> Mono.just(database.getContainer(response.getProperties().getId())))
-                        .publishOn(Schedulers.elastic())
+                        .publishOn(Schedulers.boundedElastic())
                         .block();
 
-            Optional<TransactionalBatch> txBatch = configureOperation(targetCustomer, operation);
+            Optional<CosmosBatch> txBatch = configureOperation(targetCustomer, operation);
             if(txBatch.isPresent()) {
-                TransactionalBatchResponse txResponse = container.executeTransactionalBatch(txBatch.get()).block();
+                CosmosBatchResponse txResponse = container.executeCosmosBatch(txBatch.get()).block();
                 txResponse.getResults().forEach(txResult -> logger.info(
                         "Result [" + txResult.getStatusCode() +
                                 "] - [" + txResult.getSubStatusCode() +
@@ -95,9 +95,9 @@ public class TxBatch {
             CosmosContainerResponse containerResponse = database.createContainerIfNotExists(containerProperties);
             CosmosContainer container = database.getContainer(containerResponse.getProperties().getId());
 
-            Optional<TransactionalBatch> txBatch = configureOperation(targetCustomer, operation);
+            Optional<CosmosBatch> txBatch = configureOperation(targetCustomer, operation);
             if(txBatch.isPresent()) {
-                TransactionalBatchResponse txResponse = container.executeTransactionalBatch(txBatch.get());
+                CosmosBatchResponse txResponse = container.executeCosmosBatch(txBatch.get());
                 txResponse.getResults().forEach(txResult -> logger.info(
                         "Result [" + txResult.getStatusCode() +
                                 "] - [" + txResult.getSubStatusCode() +
@@ -108,10 +108,10 @@ public class TxBatch {
         }
     }
 
-    Optional<TransactionalBatch> configureOperation(Customer _customer, String[] _operation) {
+    Optional<CosmosBatch> configureOperation(Customer _customer, String[] _operation) {
 
-        TransactionalBatch txBatch = TransactionalBatch
-                .createTransactionalBatch(new PartitionKey(_customer.getMyPartitionKey()));
+        CosmosBatch txBatch = CosmosBatch
+                .createCosmosBatch(new PartitionKey(_customer.getMyPartitionKey()));
         for (String s : _operation) {
             switch (s.toUpperCase()) {
                 case "CREATE":

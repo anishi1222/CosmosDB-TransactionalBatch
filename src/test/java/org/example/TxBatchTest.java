@@ -9,10 +9,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.util.List;
 import java.util.Optional;
 
-import com.azure.cosmos.CosmosItemOperation;
-import com.azure.cosmos.CosmosItemOperationType;
-import com.azure.cosmos.TransactionalBatch;
 import org.junit.jupiter.api.Test;
+import com.azure.cosmos.models.CosmosBatch;
+import com.azure.cosmos.models.CosmosItemOperation;
+import com.azure.cosmos.models.CosmosItemOperationType;
 
 class TxBatchTest {
 
@@ -21,7 +21,7 @@ class TxBatchTest {
         Customer customer = createCustomer();
         TxBatch txBatch = new TxBatch();
 
-        Optional<TransactionalBatch> configuredBatch = txBatch.configureOperation(
+        Optional<CosmosBatch> configuredBatch = txBatch.configureOperation(
                 customer,
                 new String[] {"CREATE", "READ", "REPLACE", "UPSERT", "DELETE"});
 
@@ -43,7 +43,7 @@ class TxBatchTest {
         Customer customer = createCustomer();
         TxBatch txBatch = new TxBatch();
 
-        TransactionalBatch configuredBatch = txBatch.configureOperation(
+        CosmosBatch configuredBatch = txBatch.configureOperation(
                 customer,
                 new String[] {"READ", "REPLACE", "DELETE"}).orElseThrow();
 
@@ -60,7 +60,7 @@ class TxBatchTest {
         Customer customer = createCustomer();
         TxBatch txBatch = new TxBatch();
 
-        TransactionalBatch configuredBatch = txBatch.configureOperation(
+        CosmosBatch configuredBatch = txBatch.configureOperation(
                 customer,
                 new String[] {"CREATE", "REPLACE", "UPSERT"}).orElseThrow();
 
@@ -79,7 +79,7 @@ class TxBatchTest {
         Customer customer = createCustomer();
         TxBatch txBatch = new TxBatch();
 
-        TransactionalBatch configuredBatch = txBatch.configureOperation(
+        CosmosBatch configuredBatch = txBatch.configureOperation(
                 customer,
                 new String[] {"create", "read"}).orElseThrow();
 
@@ -93,7 +93,7 @@ class TxBatchTest {
         Customer customer = createCustomer();
         TxBatch txBatch = new TxBatch();
 
-        Optional<TransactionalBatch> configuredBatch = txBatch.configureOperation(
+        Optional<CosmosBatch> configuredBatch = txBatch.configureOperation(
                 customer,
                 new String[] {"UNKNOWN"});
 
