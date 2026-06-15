@@ -9,10 +9,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.util.List;
 import java.util.Optional;
 
-import com.azure.cosmos.CosmosItemOperation;
-import com.azure.cosmos.CosmosItemOperationType;
 import org.junit.jupiter.api.Test;
 import com.azure.cosmos.models.CosmosBatch;
+import com.azure.cosmos.models.CosmosItemOperation;
+import com.azure.cosmos.models.CosmosItemOperationType;
 
 class TxBatchTest {
 
