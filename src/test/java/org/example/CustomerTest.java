@@ -15,7 +15,7 @@ class CustomerTest {
 
     @Test
     void createDataPopulatesRequiredFieldsAndUsesIdAsPartitionKey() {
-        Customer customer = new Customer().createData();
+        var customer = Customer.createData();
 
         assertAll(
                 () -> assertNotNull(customer.getId()),
@@ -37,15 +37,14 @@ class CustomerTest {
 
     @Test
     void accessorsRoundTripValues() {
-        Customer customer = new Customer();
-
-        customer.setId("customer-1");
-        customer.setName("Test User");
-        customer.setCity("Tokyo");
-        customer.setZipCode("10000");
-        customer.setRegion("Japan");
-        customer.setMyPartitionKey("partition-1");
-        customer.setUserDefinedId(42);
+        var customer = new Customer(
+                "customer-1",
+                "Test User",
+                "Tokyo",
+                "10000",
+                "Japan",
+                "partition-1",
+                42);
 
         assertAll(
                 () -> assertEquals("customer-1", customer.getId()),
@@ -55,5 +54,28 @@ class CustomerTest {
                 () -> assertEquals("Japan", customer.getRegion()),
                 () -> assertEquals("partition-1", customer.getMyPartitionKey()),
                 () -> assertEquals(42, customer.getUserDefinedId()));
+    }
+
+    @Test
+    void withMethodsReturnUpdatedCopyWithoutMutatingOriginal() {
+        var customer = new Customer(
+                "customer-1",
+                "Test User",
+                "Tokyo",
+                "10000",
+                "Japan",
+                "partition-1",
+                42);
+
+        var cityUpdated = customer.withCity("Kyoto");
+        var regionUpdated = customer.withRegion("Kansai");
+
+        assertAll(
+                () -> assertEquals("Tokyo", customer.getCity()),
+                () -> assertEquals("Japan", customer.getRegion()),
+                () -> assertEquals("Kyoto", cityUpdated.getCity()),
+                () -> assertEquals("Japan", cityUpdated.getRegion()),
+                () -> assertEquals("Tokyo", regionUpdated.getCity()),
+                () -> assertEquals("Kansai", regionUpdated.getRegion()));
     }
 }

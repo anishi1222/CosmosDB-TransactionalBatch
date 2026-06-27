@@ -3,7 +3,6 @@ package org.example;
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
@@ -18,15 +17,15 @@ class TxBatchTest {
 
     @Test
     void configureOperationBuildsSupportedOperationsInOrder() {
-        Customer customer = createCustomer();
-        TxBatch txBatch = new TxBatch();
+        var customer = createCustomer();
+        var txBatch = new TxBatch();
 
-        Optional<CosmosBatch> configuredBatch = txBatch.configureOperation(
+        var configuredBatch = txBatch.configureOperation(
                 customer,
                 new String[] {"CREATE", "READ", "REPLACE", "UPSERT", "DELETE"});
 
         assertTrue(configuredBatch.isPresent());
-        List<CosmosItemOperation> operations = configuredBatch.orElseThrow().getOperations();
+        var operations = configuredBatch.orElseThrow().getOperations();
 
         assertEquals(
                 List.of(
@@ -40,14 +39,14 @@ class TxBatchTest {
 
     @Test
     void configureOperationUsesCustomerIdForItemOperations() {
-        Customer customer = createCustomer();
-        TxBatch txBatch = new TxBatch();
+        var customer = createCustomer();
+        var txBatch = new TxBatch();
 
-        CosmosBatch configuredBatch = txBatch.configureOperation(
+        var configuredBatch = txBatch.configureOperation(
                 customer,
                 new String[] {"READ", "REPLACE", "DELETE"}).orElseThrow();
 
-        List<CosmosItemOperation> operations = configuredBatch.getOperations();
+        var operations = configuredBatch.getOperations();
 
         assertAll(
                 () -> assertEquals("customer-1", operations.get(0).getId()),
@@ -57,29 +56,33 @@ class TxBatchTest {
 
     @Test
     void configureOperationStoresCustomerForCreateReplaceAndUpsert() {
-        Customer customer = createCustomer();
-        TxBatch txBatch = new TxBatch();
+        var customer = createCustomer();
+        var txBatch = new TxBatch();
 
-        CosmosBatch configuredBatch = txBatch.configureOperation(
+        var configuredBatch = txBatch.configureOperation(
                 customer,
                 new String[] {"CREATE", "REPLACE", "UPSERT"}).orElseThrow();
 
-        List<CosmosItemOperation> operations = configuredBatch.getOperations();
+        var operations = configuredBatch.getOperations();
+        var replacementCustomer = (Customer) operations.get(1).getItem();
+        var upsertCustomer = (Customer) operations.get(2).getItem();
 
         assertAll(
-                () -> assertSame(customer, operations.get(0).getItem()),
-                () -> assertSame(customer, operations.get(1).getItem()),
-                () -> assertSame(customer, operations.get(2).getItem()),
-                () -> assertEquals("きょうと", customer.getCity()),
-                () -> assertEquals("日本のどこか", customer.getRegion()));
+                () -> assertEquals(customer, operations.get(0).getItem()),
+                () -> assertEquals("Tokyo", customer.getCity()),
+                () -> assertEquals("Japan", customer.getRegion()),
+                () -> assertEquals("きょうと", replacementCustomer.getCity()),
+                () -> assertEquals("Japan", replacementCustomer.getRegion()),
+                () -> assertEquals("きょうと", upsertCustomer.getCity()),
+                () -> assertEquals("日本のどこか", upsertCustomer.getRegion()));
     }
 
     @Test
     void configureOperationIsCaseInsensitive() {
-        Customer customer = createCustomer();
-        TxBatch txBatch = new TxBatch();
+        var customer = createCustomer();
+        var txBatch = new TxBatch();
 
-        CosmosBatch configuredBatch = txBatch.configureOperation(
+        var configuredBatch = txBatch.configureOperation(
                 customer,
                 new String[] {"create", "read"}).orElseThrow();
 
@@ -90,25 +93,34 @@ class TxBatchTest {
 
     @Test
     void configureOperationReturnsEmptyForUnsupportedOperation() {
-        Customer customer = createCustomer();
-        TxBatch txBatch = new TxBatch();
+        var customer = createCustomer();
+        var txBatch = new TxBatch();
 
-        Optional<CosmosBatch> configuredBatch = txBatch.configureOperation(
+        var configuredBatch = txBatch.configureOperation(
                 customer,
                 new String[] {"UNKNOWN"});
 
         assertFalse(configuredBatch.isPresent());
     }
 
+    @Test
+    void configureOperationReturnsEmptyForBlankOrNullOperation() {
+        var customer = createCustomer();
+        var txBatch = new TxBatch();
+
+        assertAll(
+                () -> assertFalse(txBatch.configureOperation(customer, new String[] {"  "}).isPresent()),
+                () -> assertFalse(txBatch.configureOperation(customer, new String[] {null}).isPresent()));
+    }
+
     private Customer createCustomer() {
-        Customer customer = new Customer();
-        customer.setId("customer-1");
-        customer.setName("Test User");
-        customer.setCity("Tokyo");
-        customer.setZipCode("10000");
-        customer.setRegion("Japan");
-        customer.setMyPartitionKey("customer-1");
-        customer.setUserDefinedId(42);
-        return customer;
+        return new Customer(
+                "customer-1",
+                "Test User",
+                "Tokyo",
+                "10000",
+                "Japan",
+                "customer-1",
+                42);
     }
 }

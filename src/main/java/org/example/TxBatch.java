@@ -3,6 +3,7 @@ package org.example;
 import com.azure.cosmos.*;
 import com.azure.cosmos.models.*;
 
+import java.util.Locale;
 import java.util.List;
 import java.util.Optional;
 
@@ -12,14 +13,32 @@ import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
 public class TxBatch {
-    final String ENDPOINT = "Cosmos DB URL";
-    final String KEY = "Access Key";
-    final String DATABASE = "TxDB";
-    final String CONTAINER = "TxContainer";
-    static Logger logger;
+    private static final String ENDPOINT = "Cosmos DB URL";
+    private static final String KEY = "Access Key";
+    private static final String DATABASE = "TxDB";
+    private static final String CONTAINER = "TxContainer";
+    private static final String PARTITION_KEY_PATH = "/myPartitionKey";
+    private static final String REPLACEMENT_CITY = "きょうと";
+    private static final String UPSERT_REGION = "日本のどこか";
+    private static final Logger LOGGER = LoggerFactory.getLogger(TxBatch.class);
 
-    public TxBatch() {
-        logger = LoggerFactory.getLogger(this.getClass());
+    private enum BatchOperation {
+        CREATE,
+        REPLACE,
+        UPSERT,
+        DELETE,
+        READ;
+
+        static Optional<BatchOperation> from(String value) {
+            if (value == null || value.isBlank()) {
+                return Optional.empty();
+            }
+            try {
+                return Optional.of(valueOf(value.strip().toUpperCase(Locale.ROOT)));
+            } catch (IllegalArgumentException _) {
+                return Optional.empty();
+            }
+        }
     }
 
     public void testBedAsync(Customer targetCustomer, String[] operation) {
@@ -35,41 +54,31 @@ public class TxBatch {
                 .gatewayMode()
                 .connectionSharingAcrossClientsEnabled(true)
                 .buildAsyncClient()) {
-
-                CosmosAsyncDatabase database = client.createDatabaseIfNotExists(DATABASE)
-                        .doOnError(throwable -> logger.info("[Create] Unable to create Database: " + throwable.getMessage()))
+            var database = client.createDatabaseIfNotExists(DATABASE)
                         .doOnSuccess(response -> {
-                            logger.info(">>[Create] Database created " + response .getProperties().getId());
-                            logger.info(">>[Create] databaseUsage " + response .getDatabaseUsage() + "[RU]");
+                            LOGGER.info(">>[Create] Database created {}", response.getProperties().getId());
                         })
-                        .flatMap(response  -> Mono.just(client.getDatabase(response .getProperties().getId())))
+                        .flatMap(response -> Mono.just(client.getDatabase(response.getProperties().getId())))
                         .publishOn(Schedulers.boundedElastic())
                         .block();
 
-                CosmosContainerProperties containerProperties
-                        = new CosmosContainerProperties(CONTAINER, "/myPartitionKey");
+            var containerProperties = new CosmosContainerProperties(CONTAINER, PARTITION_KEY_PATH);
 
-                CosmosAsyncContainer container
-                        = database.createContainerIfNotExists(containerProperties)
-                        .doOnError(throwable -> logger.info("[Create] Unable to create Container " + throwable.getMessage()))
-                        .doOnSuccess(response-> {
-                            logger.info(">>[Create] Container created " + response.getProperties().getId());
-                            logger.info(">>[Create] requestCharge " + response.getRequestCharge() + "[RU]");
-                        })
-                        .flatMap(response -> Mono.just(database.getContainer(response.getProperties().getId())))
-                        .publishOn(Schedulers.boundedElastic())
-                        .block();
+            var container = database.createContainerIfNotExists(containerProperties)
+                    .doOnError(throwable -> LOGGER.info("[Create] Unable to create Container {}", throwable.getMessage()))
+                    .doOnSuccess(response -> {
+                        LOGGER.info(">>[Create] Container created {}", response.getProperties().getId());
+                        LOGGER.info(">>[Create] requestCharge {}[RU]", response.getRequestCharge());
+                    })
+                    .flatMap(response -> Mono.just(database.getContainer(response.getProperties().getId())))
+                    .publishOn(Schedulers.boundedElastic())
+                    .block();
 
-            Optional<CosmosBatch> txBatch = configureOperation(targetCustomer, operation);
-            if(txBatch.isPresent()) {
-                CosmosBatchResponse txResponse = container.executeCosmosBatch(txBatch.get()).block();
-                txResponse.getResults().forEach(txResult -> logger.info(
-                        "Result [" + txResult.getStatusCode() +
-                                "] - [" + txResult.getSubStatusCode() +
-                                "] Operation: " + txResult.getOperation().getOperationType().name()));
-            }
+            configureOperation(targetCustomer, operation)
+                    .map(batch -> container.executeCosmosBatch(batch).block())
+                    .ifPresent(this::logBatchResults);
         } catch (CosmosException e) {
-            e.printStackTrace();
+            LOGGER.error("Cosmos async batch execution failed", e);
         }
     }
 
@@ -87,61 +96,69 @@ public class TxBatch {
                 .connectionSharingAcrossClientsEnabled(true)
                 .buildClient()) {
 
-            CosmosDatabaseResponse databaseResponse = client.createDatabaseIfNotExists(DATABASE);
-            CosmosDatabase database = client.getDatabase(databaseResponse.getProperties().getId());
-            CosmosContainerProperties containerProperties
-                    = new CosmosContainerProperties(CONTAINER, "/myPartitionKey");
+            var databaseResponse = client.createDatabaseIfNotExists(DATABASE);
+            var database = client.getDatabase(databaseResponse.getProperties().getId());
+            var containerProperties = new CosmosContainerProperties(CONTAINER, PARTITION_KEY_PATH);
 
-            CosmosContainerResponse containerResponse = database.createContainerIfNotExists(containerProperties);
-            CosmosContainer container = database.getContainer(containerResponse.getProperties().getId());
+            var containerResponse = database.createContainerIfNotExists(containerProperties);
+            var container = database.getContainer(containerResponse.getProperties().getId());
 
-            Optional<CosmosBatch> txBatch = configureOperation(targetCustomer, operation);
-            if(txBatch.isPresent()) {
-                CosmosBatchResponse txResponse = container.executeCosmosBatch(txBatch.get());
-                txResponse.getResults().forEach(txResult -> logger.info(
-                        "Result [" + txResult.getStatusCode() +
-                                "] - [" + txResult.getSubStatusCode() +
-                                "] Operation: " + txResult.getOperation().getOperationType().name()));
-            }
+            configureOperation(targetCustomer, operation)
+                    .map(container::executeCosmosBatch)
+                    .ifPresent(this::logBatchResults);
         } catch (CosmosException e) {
-            e.printStackTrace();
+            LOGGER.error("Cosmos sync batch execution failed", e);
         }
     }
 
-    Optional<CosmosBatch> configureOperation(Customer _customer, String[] _operation) {
+    Optional<CosmosBatch> configureOperation(Customer customer, String[] operations) {
 
-        CosmosBatch txBatch = CosmosBatch
-                .createCosmosBatch(new PartitionKey(_customer.getMyPartitionKey()));
-        for (String s : _operation) {
-            switch (s.toUpperCase()) {
-                case "CREATE":
-                    // add Create Operation
-                    txBatch.createItemOperation(_customer);
-                    break;
-                case "REPLACE":
-                    // add Replace Operation
-                    _customer.setCity("きょうと");
-                    txBatch.replaceItemOperation(_customer.getId(), _customer);
-                    break;
-                case "UPSERT":
-                    // add Upsert Operation
-                    _customer.setRegion("日本のどこか");
-                    txBatch.upsertItemOperation(_customer);
-                    break;
-                case "DELETE":
-                    // add Delete Operation
-                    txBatch.deleteItemOperation(_customer.getId());
-                    break;
-                case "READ":
-                    // add read operation
-                    txBatch.readItemOperation(_customer.getId()).getItem();
-                    break;
-                default:
-                    txBatch = null;
-                    break;
+        var txBatch = CosmosBatch
+                .createCosmosBatch(new PartitionKey(customer.getMyPartitionKey()));
+        var currentCustomer = customer;
+        for (var requestedOperation : operations) {
+            var operation = BatchOperation.from(requestedOperation);
+            if (operation.isEmpty()) {
+                return Optional.empty();
             }
+            currentCustomer = applyOperation(txBatch, currentCustomer, operation.orElseThrow());
         }
 
-        return Optional.ofNullable(txBatch);
+        return Optional.of(txBatch);
+    }
+
+    private Customer applyOperation(CosmosBatch txBatch, Customer customer, BatchOperation operation) {
+        return switch (operation) {
+            case CREATE -> {
+                txBatch.createItemOperation(customer);
+                yield customer;
+            }
+            case REPLACE -> {
+                var updatedCustomer = customer.withCity(REPLACEMENT_CITY);
+                txBatch.replaceItemOperation(updatedCustomer.getId(), updatedCustomer);
+                yield updatedCustomer;
+            }
+            case UPSERT -> {
+                var updatedCustomer = customer.withRegion(UPSERT_REGION);
+                txBatch.upsertItemOperation(updatedCustomer);
+                yield updatedCustomer;
+            }
+            case DELETE -> {
+                txBatch.deleteItemOperation(customer.getId());
+                yield customer;
+            }
+            case READ -> {
+                txBatch.readItemOperation(customer.getId()).getItem();
+                yield customer;
+            }
+        };
+    }
+
+    private void logBatchResults(CosmosBatchResponse txResponse) {
+        txResponse.getResults().forEach(txResult -> LOGGER.info(
+                "Result [{}] - [{}] Operation: {}",
+                txResult.getStatusCode(),
+                txResult.getSubStatusCode(),
+                txResult.getOperation().getOperationType().name()));
     }
 }
