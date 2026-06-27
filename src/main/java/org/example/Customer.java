@@ -1,85 +1,66 @@
 package org.example;
 
 import net.datafaker.Faker;
+
 import java.util.Locale;
 import java.util.UUID;
 
-public class Customer {
-    String id;
-    String name;
-    String city;
-    String zipCode;
-    String region;
-    String myPartitionKey;
-    Integer userDefinedId;
+public record Customer(
+        String id,
+        String name,
+        String city,
+        String zipCode,
+        String region,
+        String myPartitionKey,
+        Integer userDefinedId) {
+
+    private static final Faker JAPANESE_FAKER = new Faker(Locale.of("ja", "JP"));
+
+    public static Customer createData() {
+        var id = UUID.randomUUID().toString();
+        return new Customer(
+                id,
+                JAPANESE_FAKER.name().name(),
+                JAPANESE_FAKER.country().capital(),
+                JAPANESE_FAKER.number().digits(5),
+                JAPANESE_FAKER.country().name(),
+                id,
+                JAPANESE_FAKER.random().nextInt(0, 1000));
+    }
+
+    public Customer withCity(String city) {
+        return new Customer(id, name, city, zipCode, region, myPartitionKey, userDefinedId);
+    }
+
+    public Customer withRegion(String region) {
+        return new Customer(id, name, city, zipCode, region, myPartitionKey, userDefinedId);
+    }
 
     public String getId() {
         return id;
-    }
-
-    public void setId(String id) {
-        this.id = id;
     }
 
     public String getName() {
         return name;
     }
 
-    public void setName(String name) {
-        this.name = name;
-    }
-
     public String getCity() {
         return city;
-    }
-
-    public void setCity(String city) {
-        this.city = city;
     }
 
     public String getZipCode() {
         return zipCode;
     }
 
-    public void setZipCode(String zipCode) {
-        this.zipCode = zipCode;
-    }
-
     public String getRegion() {
         return region;
-    }
-
-    public void setRegion(String region) {
-        this.region = region;
     }
 
     public String getMyPartitionKey() {
         return myPartitionKey;
     }
 
-    public void setMyPartitionKey(String myPartitionKey) {
-        this.myPartitionKey = myPartitionKey;
-    }
-
     public Integer getUserDefinedId() {
         return userDefinedId;
-    }
-
-    public void setUserDefinedId(Integer userDefinedId) {
-        this.userDefinedId = userDefinedId;
-    }
-
-    public Customer createData() {
-
-        Faker faker = new Faker(Locale.of("ja", "JP"));
-        Customer sampleCustomer = new Customer();
-        sampleCustomer.setCity(faker.country().capital());
-        sampleCustomer.setUserDefinedId(faker.random().nextInt(0, 1000));
-        sampleCustomer.setZipCode(faker.number().digits(5));
-        sampleCustomer.setName(faker.name().name());
-        sampleCustomer.setId(UUID.randomUUID().toString());
-        sampleCustomer.setRegion(faker.country().name());
-        sampleCustomer.setMyPartitionKey(sampleCustomer.getId());
-        return sampleCustomer;
     }
 }
