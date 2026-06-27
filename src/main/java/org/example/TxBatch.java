@@ -3,14 +3,14 @@ package org.example;
 import com.azure.cosmos.*;
 import com.azure.cosmos.models.*;
 
-import java.util.Locale;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import reactor.core.publisher.Mono;
-import reactor.core.scheduler.Schedulers;
 
 public class TxBatch {
     private static final String ENDPOINT = "Cosmos DB URL";
@@ -41,74 +41,66 @@ public class TxBatch {
         }
     }
 
-    public void testBedAsync(Customer targetCustomer, String[] operation) {
-
-        try (CosmosAsyncClient client = new CosmosClientBuilder()
-                .endpoint(ENDPOINT)
-                .key(KEY)
-                .consistencyLevel(ConsistencyLevel.SESSION)
-                .contentResponseOnWriteEnabled(true)
-                .preferredRegions(List.of("Japan East"))
-                .readRequestsFallbackEnabled(true)
-                .endpointDiscoveryEnabled(true)
-                .gatewayMode()
-                .connectionSharingAcrossClientsEnabled(true)
-                .buildAsyncClient()) {
-            var database = client.createDatabaseIfNotExists(DATABASE)
-                        .doOnSuccess(response -> {
-                            LOGGER.info(">>[Create] Database created {}", response.getProperties().getId());
-                        })
-                        .flatMap(response -> Mono.just(client.getDatabase(response.getProperties().getId())))
-                        .publishOn(Schedulers.boundedElastic())
-                        .block();
-
-            var containerProperties = new CosmosContainerProperties(CONTAINER, PARTITION_KEY_PATH);
-
-            var container = database.createContainerIfNotExists(containerProperties)
-                    .doOnError(throwable -> LOGGER.info("[Create] Unable to create Container {}", throwable.getMessage()))
-                    .doOnSuccess(response -> {
-                        LOGGER.info(">>[Create] Container created {}", response.getProperties().getId());
-                        LOGGER.info(">>[Create] requestCharge {}[RU]", response.getRequestCharge());
-                    })
-                    .flatMap(response -> Mono.just(database.getContainer(response.getProperties().getId())))
-                    .publishOn(Schedulers.boundedElastic())
-                    .block();
-
-            configureOperation(targetCustomer, operation)
-                    .map(batch -> container.executeCosmosBatch(batch).block())
-                    .ifPresent(this::logBatchResults);
-        } catch (CosmosException e) {
-            LOGGER.error("Cosmos async batch execution failed", e);
-        }
-    }
-
     public void testBedSync(Customer targetCustomer, String[] operation) {
 
-        try (CosmosClient client = new CosmosClientBuilder()
-                .endpoint(ENDPOINT)
-                .key(KEY)
-                .consistencyLevel(ConsistencyLevel.SESSION)
-                .contentResponseOnWriteEnabled(true)
-                .preferredRegions(List.of("Japan East"))
-                .readRequestsFallbackEnabled(true)
-                .endpointDiscoveryEnabled(true)
-                .gatewayMode()
-                .connectionSharingAcrossClientsEnabled(true)
-                .buildClient()) {
-
-            var databaseResponse = client.createDatabaseIfNotExists(DATABASE);
-            var database = client.getDatabase(databaseResponse.getProperties().getId());
-            var containerProperties = new CosmosContainerProperties(CONTAINER, PARTITION_KEY_PATH);
-
-            var containerResponse = database.createContainerIfNotExists(containerProperties);
-            var container = database.getContainer(containerResponse.getProperties().getId());
-
-            configureOperation(targetCustomer, operation)
-                    .map(container::executeCosmosBatch)
-                    .ifPresent(this::logBatchResults);
+        try {
+            executeBatch(targetCustomer, operation);
         } catch (CosmosException e) {
             LOGGER.error("Cosmos sync batch execution failed", e);
         }
+    }
+
+    public CompletableFuture<Void> testBedAsync(Customer targetCustomer, String[] operation) {
+        var executor = Executors.newVirtualThreadPerTaskExecutor();
+        return CompletableFuture
+                .runAsync(() -> executeBatch(targetCustomer, operation), executor)
+                .whenComplete((_, throwable) -> {
+                    executor.shutdown();
+                    if (throwable != null) {
+                        LOGGER.error("Cosmos async batch execution failed", throwable);
+                    }
+                });
+    }
+
+    private void executeBatch(Customer targetCustomer, String[] operation) {
+        try (CosmosClient client = createClient()) {
+            var container = getOrCreateContainer(client);
+            var txBatch = configureOperation(targetCustomer, operation);
+            if (txBatch.isEmpty()) {
+                LOGGER.warn("No batch was executed because an unsupported operation was requested.");
+                return;
+            }
+
+            var txResponse = container.executeCosmosBatch(txBatch.orElseThrow());
+            logBatchResults(txResponse);
+        }
+    }
+
+    private CosmosClient createClient() {
+        return new CosmosClientBuilder()
+                .endpoint(ENDPOINT)
+                .key(KEY)
+                .consistencyLevel(ConsistencyLevel.SESSION)
+                .contentResponseOnWriteEnabled(true)
+                .preferredRegions(List.of("Japan East"))
+                .readRequestsFallbackEnabled(true)
+                .endpointDiscoveryEnabled(true)
+                .gatewayMode()
+                .connectionSharingAcrossClientsEnabled(true)
+                .buildClient();
+    }
+
+    private CosmosContainer getOrCreateContainer(CosmosClient client) {
+        var databaseResponse = client.createDatabaseIfNotExists(DATABASE);
+        LOGGER.info(">>[Prepare] Database ready {}", databaseResponse.getProperties().getId());
+
+        var database = client.getDatabase(databaseResponse.getProperties().getId());
+        var containerProperties = new CosmosContainerProperties(CONTAINER, PARTITION_KEY_PATH);
+        var containerResponse = database.createContainerIfNotExists(containerProperties);
+        LOGGER.info(">>[Prepare] Container ready {}", containerResponse.getProperties().getId());
+        LOGGER.info(">>[Prepare] requestCharge {}[RU]", containerResponse.getRequestCharge());
+
+        return database.getContainer(containerResponse.getProperties().getId());
     }
 
     Optional<CosmosBatch> configureOperation(Customer customer, String[] operations) {
@@ -119,6 +111,7 @@ public class TxBatch {
         for (var requestedOperation : operations) {
             var operation = BatchOperation.from(requestedOperation);
             if (operation.isEmpty()) {
+                LOGGER.warn("Unsupported batch operation: {}", requestedOperation);
                 return Optional.empty();
             }
             currentCustomer = applyOperation(txBatch, currentCustomer, operation.orElseThrow());
@@ -148,7 +141,7 @@ public class TxBatch {
                 yield customer;
             }
             case READ -> {
-                txBatch.readItemOperation(customer.getId()).getItem();
+                txBatch.readItemOperation(customer.getId());
                 yield customer;
             }
         };

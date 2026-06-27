@@ -1,8 +1,9 @@
 # TransactionalBatch - Azure Cosmos DB TransactionalBatch sample
 
 This repository is a small Java sample for building and executing Azure Cosmos DB
-`TransactionalBatch` operations. It includes both synchronous and asynchronous
-Cosmos DB client examples.
+`TransactionalBatch` operations. It keeps the core Cosmos DB flow synchronous and
+offers a Reactor-free asynchronous wrapper with Java virtual threads and
+`CompletableFuture`.
 
 ## What it demonstrates
 
@@ -11,7 +12,8 @@ Cosmos DB client examples.
 - Supporting `CREATE`, `READ`, `REPLACE`, `UPSERT`, and `DELETE` operations from
   command-line arguments.
 - Executing the batch through the synchronous Cosmos DB SDK path.
-- Keeping the asynchronous Cosmos DB SDK path available in `TxBatch`.
+- Running the same flow asynchronously without Reactor by using a virtual thread
+  and `CompletableFuture`.
 - Unit testing local data generation, immutable copy helpers, and batch
   configuration logic without
   connecting to Cosmos DB.
@@ -27,8 +29,9 @@ Cosmos DB client examples.
   - JavaBean-style getters remain for Cosmos/Jackson compatibility.
   - `withCity` and `withRegion` copy helpers preserve immutable updates for
     `REPLACE` and `UPSERT` batch payloads.
-  - `TxBatch` uses `var`, `List.of`, `Optional`, switch expressions with arrow
-    labels, constants, and parameterized SLF4J logging.
+  - `TxBatch` uses the synchronous Cosmos DB client, a Reactor-free
+    `CompletableFuture` async wrapper, `var`, `List.of`, `Optional`, switch
+    expressions with arrow labels, constants, and parameterized SLF4J logging.
   - Maven compilation uses `<release>25</release>` through the compiler plugin.
 - Tests were updated to cover record behavior, immutable copy helpers,
   cumulative batch payload changes, and blank/null unsupported operations.
@@ -100,5 +103,8 @@ Supported operation names are case-insensitive:
 - `UPSERT`
 - `DELETE`
 
-`App` currently calls `TxBatch#testBedSync`. The asynchronous path is available
-in `TxBatch#testBedAsync` and can be enabled from `App` if needed.
+`App` calls `TxBatch#testBedSync`, which creates the database and container if
+needed, executes the requested transactional batch, and logs each operation
+result. `TxBatch#testBedAsync` runs the same synchronous SDK flow on a virtual
+thread and returns a `CompletableFuture<Void>` for callers that need an
+asynchronous API without Reactor.
